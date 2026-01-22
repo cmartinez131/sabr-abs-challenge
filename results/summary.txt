@@ -1,0 +1,23 @@
+ABS CHALLENGE STRATEGY - RESULTS SUMMARY
+
+Inning Config: 4-bucket Alt2 (1-4, 5-7, 8-9, 10+)
+State Space: 2,592 states
+
+Terminal-Count:
+  ER/Game: 0.0438 +/- 0.1182
+  Challenges/Game: 2.64
+  Success Rate: 24.1%
+  Projected Wins: +0.71
+
+Greedy:
+  ER/Game: 0.0414 +/- 0.1234
+  Challenges/Game: 2.57
+  Success Rate: 22.2%
+  Projected Wins: +0.67
+
+Q-Learning:
+  ER/Game: 0.1164 +/- 0.2503
+  Challenges/Game: 2.78
+  Success Rate: 28.9%
+  Projected Wins: +1.89
+

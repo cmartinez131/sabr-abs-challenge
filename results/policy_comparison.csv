@@ -1,0 +1,4 @@
+Policy,Avg_ER_Game,Std_Dev,Success_Rate,Challenges_Game,Projected_Wins
+Terminal-Count,0.0438,0.1182,24.1,2.64,0.71
+Greedy,0.0414,0.1234,22.2,2.57,0.67
+Q-Learning,0.1164,0.2503,28.9,2.78,1.89
