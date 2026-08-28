@@ -20,9 +20,10 @@ I framed this as a Markov Decision Process and solved it with tabular Q-learning
 
 | Policy | ER/Game | Projected Wins/Season |
 |--------|---------|----------------------|
-| Terminal-Count Heuristic | ~0.06 | +0.9 |
-| Greedy (EV-based) | ~0.08 | +1.3 |
-| **Q-Learning** | **~0.12** | **+1.89** |
+| Situational-Threshold | 0.0438 | +0.71 |
+| Greedy (EV-based) | 0.0365 | +0.59 |
+| Conservative-Coach | 0.0584 | +0.95 |
+| **Q-Learning** | **0.1146** | **+1.86** |
 
 The Q-learning agent outperforms baselines by learning to save challenges for late-inning, high-leverage situations rather than using them on any positive-EV opportunity.
 
