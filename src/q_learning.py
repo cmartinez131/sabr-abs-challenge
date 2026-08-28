@@ -313,11 +313,11 @@ class StateEncoder:
 # BASELINE POLICIES
 
 
-class TerminalCountPolicy:
-    """Baseline A: Challenge on terminal counts near zone edge."""
+class SituationalThresholdPolicy:
+    """Baseline A: Challenge based on pitch proximity and game context."""
     
     def __init__(self, threshold=0.08):
-        self.name = "Terminal-Count"
+        self.name = "Situational-Threshold"
         self.threshold = threshold
     
     def decide(self, pitch_data, challenges_left):
@@ -438,6 +438,74 @@ class GreedyPolicy:
         expected_value = p_overturn * delta_re24 - self.lambda_penalty * (1 - p_overturn)
         
         return 1 if expected_value > 0 else 0
+
+
+class ConservativeCoachPolicy:
+    """
+    Baseline C: Rule-based policy modeling a cautious, experienced coach.
+
+    A real coaching staff wouldn't challenge every borderline pitch.
+    They conserve challenges for high-leverage moments and don't burn
+    their last challenge early in the game.
+
+    Rules (in priority order):
+    1. Never challenge if no challenges left
+    2. Protect last challenge: don't use it before inning 6
+    3. Only challenge very close pitches (within 1.5 inches) -- where
+       overturn probability is meaningful (25-50%)
+    4. Require at least one high-leverage condition:
+         - Two-strike count (batter survival situation)
+         - Runner in scoring position (2B or 3B occupied)
+         - Two outs (inning-ending threat)
+         - Late inning (7th or later)
+    5. Don't burn last challenge in a blowout (score diff > 3)
+    """
+
+    name = "Conservative-Coach"
+
+    def __init__(self):
+        pass
+
+    def decide(self, pitch_data, challenges_left):
+        if challenges_left <= 0:
+            return 0
+
+        inning = int(pitch_data.get('inning', 1))
+        distance = pitch_data.get('dist_from_zone', 0.25)
+        if pd.isna(distance):
+            distance = 0.25
+        dist_inches = distance * 12
+
+        # Rule 2: protect last challenge before inning 6
+        if challenges_left == 1 and inning <= 5:
+            return 0
+
+        # Rule 3: only challenge genuinely close pitches
+        if dist_inches > 1.5:
+            return 0
+
+        # Rule 4: require at least one high-leverage condition
+        strikes = int(pitch_data.get('strikes', 0))
+        outs = int(pitch_data.get('outs_when_up', 0))
+        on_2b = pd.notna(pitch_data.get('on_2b')) and pitch_data.get('on_2b') != 0
+        on_3b = pd.notna(pitch_data.get('on_3b')) and pitch_data.get('on_3b') != 0
+        score_diff = pitch_data.get('score_diff', 0)
+        if pd.isna(score_diff):
+            score_diff = 0
+
+        two_strike = (strikes == 2)
+        scoring_position = on_2b or on_3b
+        two_outs = (outs == 2)
+        late_inning = (inning >= 7)
+
+        if not (two_strike or scoring_position or two_outs or late_inning):
+            return 0
+
+        # Rule 5: don't waste last challenge in a blowout
+        if challenges_left == 1 and abs(score_diff) > 3:
+            return 0
+
+        return 1
 
 
 class QLearningPolicy:
@@ -633,8 +701,9 @@ def evaluate_policies(test_data, encoder, qlearner):
     simulator = GameSimulator(test_data, encoder)
     
     policies = [
-        TerminalCountPolicy(threshold=0.08),
-        GreedyPolicy(lambda_penalty=0.01),
+        SituationalThresholdPolicy(threshold=0.08),
+        GreedyPolicy(lambda_penalty=0.02),
+        ConservativeCoachPolicy(),
         QLearningPolicy(qlearner, encoder)
     ]
     
@@ -732,14 +801,51 @@ def save_results(results, qlearner, history, encoder, base_path='..'):
     history_df.to_csv(f'{output_dir}/training_history.csv', index=False)
     print(f"Saved training_history.csv")
     
-    # Save training progress chart (only chart from q_learning.py)
+    # Save training progress chart
     plt.figure(figsize=(10, 6))
-    plt.plot(history['epoch'], history['avg_reward'], 'b-', linewidth=2)
+    
+    # 1. Plot raw noisy training data in the background (light grey)
+    plt.plot(history['epoch'], history['avg_reward'], color='lightslategray', alpha=0.6, linewidth=1.5)
+    
+    # 2. Calculate and plot the 10-epoch moving average (red line)
+    rewards_series = pd.Series(history['avg_reward'])
+    moving_avg = rewards_series.rolling(window=10, min_periods=1).mean()
+    plt.plot(history['epoch'], moving_avg, color='#e74c3c', linewidth=2, label='10-epoch moving avg')
+    
+    # 3. Add horizontal baselines from the test set results
+    if 'Q-Learning' in results:
+        test_reward = results['Q-Learning']['avg_reward']
+        plt.axhline(y=test_reward, color='#2ecc71', linestyle='--', linewidth=2, 
+                    label=f'Test set: {test_reward:.4f}')
+        
+    if 'Situational-Threshold' in results:
+        sit_reward = results['Situational-Threshold']['avg_reward']
+        plt.axhline(y=sit_reward, color='#3498db', linestyle=':', linewidth=1.5, 
+                    label=f'Sit-Threshold: {sit_reward:.4f}')
+        
+    if 'Greedy' in results:
+        greedy_reward = results['Greedy']['avg_reward']
+        plt.axhline(y=greedy_reward, color='#2980b9', linestyle=':', linewidth=1.5, 
+                    label=f'Greedy: {greedy_reward:.4f}')
+
+    if 'Conservative-Coach' in results:
+        cons_reward = results['Conservative-Coach']['avg_reward']
+        plt.axhline(y=cons_reward, color='#F5A623', linestyle=':', linewidth=1.5,
+                    label=f'Cons-Coach: {cons_reward:.4f}')
+        
+    # 4. Formatting and Labels
     plt.xlabel('Training Epoch')
-    plt.ylabel('Average Reward per Game')
-    plt.title('Q-Learning Training Progress')
+    plt.ylabel('Average Reward (ER/Game)')
+    plt.title('Q-Learning Training Progress', fontsize=14, fontweight='bold')
     plt.grid(True, alpha=0.3)
-    plt.tight_layout()
+    plt.legend(loc='lower right')
+    
+    # 5. Add the caption at the bottom
+    caption = "Noise is normal - Q-learning uses stochastic exploration. Test set evaluation (green dashed) uses the final policy deterministically."
+    plt.figtext(0.5, 0.02, caption, ha="center", fontsize=9, style='italic', color='dimgrey')
+    
+    # Adjust layout to make room for the caption before saving
+    plt.tight_layout(rect=[0, 0.04, 1, 1]) 
     plt.savefig(f'{figures_dir}/training_progress.png', dpi=150)
     plt.close()
     print(f"Saved training_progress.png")
@@ -863,11 +969,14 @@ def main():
         return
     
     try:
-        train_data = pd.read_csv(f'{data_path}train_data.csv')
-        val_data = pd.read_csv(f'{data_path}val_data.csv')
+        # Merge val into train — val set was not used for any tuning decisions,
+        # so combining it gives the agent ~21% more training data at no cost.
+        train_data = pd.concat([
+            pd.read_csv(f'{data_path}train_data.csv'),
+            pd.read_csv(f'{data_path}val_data.csv')
+        ]).reset_index(drop=True)
         test_data = pd.read_csv(f'{data_path}test_data.csv')
         print(f"  Train: {len(train_data):,} pitches ({train_data['game_pk'].nunique()} games)")
-        print(f"  Val:   {len(val_data):,} pitches ({val_data['game_pk'].nunique()} games)")
         print(f"  Test:  {len(test_data):,} pitches ({test_data['game_pk'].nunique()} games)")
     except Exception as e:
         print(f"Error loading data: {e}")

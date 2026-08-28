@@ -1,4 +1,5 @@
 Policy,Avg_ER_Game,Std_Dev,Success_Rate,Challenges_Game,Projected_Wins
-Terminal-Count,0.0438,0.1182,24.1,2.64,0.71
-Greedy,0.0414,0.1234,22.2,2.57,0.67
-Q-Learning,0.1164,0.2503,28.9,2.78,1.89
+Situational-Threshold,0.0438,0.1182,24.1,2.64,0.71
+Greedy,0.0365,0.1208,20.1,2.50,0.59
+Conservative-Coach,0.0584,0.1594,22.3,2.38,0.95
+Q-Learning,0.1146,0.2242,28.0,2.77,1.86
